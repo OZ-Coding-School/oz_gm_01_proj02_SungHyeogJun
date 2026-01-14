@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 
-[CreateAssetMenu]
+[CreateAssetMenu(fileName = "TerrainData", menuName = "SRPG/Terrain")]
 public class TerrainData : ScriptableObject
 {
     public bool walkable;
-    public int moveCost;
+    public TerrainType type;
 }
