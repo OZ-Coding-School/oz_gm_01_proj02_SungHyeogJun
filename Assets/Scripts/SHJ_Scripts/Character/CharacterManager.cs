@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 /*
 CharacterManager
@@ -17,7 +18,8 @@ public class CharacterManager : MonoBehaviour
     public static CharacterManager Instance;
     // 병종 연결 (현재 테스트: Infantry만)
     public InfantryClass infantry;
-
+    public Tilemap groundTilemap;                              // 표시용/이동판정용 타일맵
+    public Dictionary<TileBase, TerrainType> tileTerrainTable; // 타일 → 지형타입 매핑테이블
     private void Awake()
     {
         // 테이블 먼저 생성
@@ -51,11 +53,7 @@ public class CharacterManager : MonoBehaviour
 
     public SoldierResult RequestUnitData(UnitType type)
     {
-        switch (type)
-        {
-            case UnitType.Infantry:
-                return infantry.GetCurrentResult();
-        }
+      
 
         Debug.LogWarning($"UnitType [{type}] 에 대한 유닛 데이터 없음");
         return null;

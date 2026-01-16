@@ -4,21 +4,25 @@ using UnityEngine.Tilemaps;
 
 public class InfantryClass : MonoBehaviour, IUnitClass
 {
-    public Tilemap groundTilemap;
-    public Color highlightColor = Color.green;
-
-    private Dictionary<Vector3Int, Color> originalColors = new Dictionary<Vector3Int, Color>();
-
     public int movementRange { get; private set; } = 4;
     public Dictionary<TerrainType, int> CostTable { get; private set; }
 
-    private TerrainMap terrainMap;
-    private CharacterManager manager;
+    [SerializeField] private TileBase[] _distanceTiles;   // ← 실제 데이터 보관
+
+    public TileBase[] distanceTiles => _distanceTiles;
+
+    public Color highlightColor = Color.cyan;
 
     public UnitType unitType { get; private set; } = UnitType.Infantry;
-    public FieldType currentField = FieldType.None;
 
-    public int stateNumber = 1; // 결과 테이블 인덱스
+    private TerrainMap terrainMap;
+    private CharacterManager manager;
+    private Tilemap groundTilemap;
+
+    private Dictionary<Vector3Int, Color> originalColors = new Dictionary<Vector3Int, Color>();
+
+    private Dictionary<Vector3Int, TileBase> originalTiles = new Dictionary<Vector3Int, TileBase>();
+    // ← 인터페이스 구현
 
     private void Awake()
     {
@@ -31,6 +35,9 @@ public class InfantryClass : MonoBehaviour, IUnitClass
         if (manager != null)
         {
             manager.infantry = this;
+
+            //타일맵 연결 여기서 해줌
+            groundTilemap = manager.groundTilemap;
         }
     }
 
@@ -48,51 +55,71 @@ public class InfantryClass : MonoBehaviour, IUnitClass
 
     public void ShowDummyRange(Vector3Int startCell)
     {
+        if (groundTilemap == null)
+            return;
+
         ClearHighlight();
+
         for (int dx = -movementRange; dx <= movementRange; dx++)
         {
             for (int dy = -movementRange; dy <= movementRange; dy++)
             {
-                if (Mathf.Abs(dx) + Mathf.Abs(dy) <= movementRange)
+                int distance = Mathf.Abs(dx) + Mathf.Abs(dy);
+                if (distance > movementRange)
+                    continue;
+
+                Vector3Int cell = startCell + new Vector3Int(dx, dy, 0);
+
+                if (!groundTilemap.HasTile(cell))
+                    continue;
+
+                // 원본 타일 저장
+                if (!originalTiles.ContainsKey(cell))
+                    originalTiles[cell] = groundTilemap.GetTile(cell);
+
+                // distance tile 적용
+                if (distance > 0 && distance - 1 < distanceTiles.Length)
                 {
-                    Vector3Int cell = startCell + new Vector3Int(dx, dy, 0);
-
-                    if (!originalColors.ContainsKey(cell))
-                        originalColors[cell] = groundTilemap.GetColor(cell);
-
                     groundTilemap.SetTileFlags(cell, TileFlags.None);
-                    groundTilemap.SetColor(cell, highlightColor);
+                    groundTilemap.SetTile(cell, distanceTiles[distance - 1]);
                 }
+
+                // 원본 색 저장
+                if (!originalColors.ContainsKey(cell))
+                    originalColors[cell] = groundTilemap.GetColor(cell);
+
+                groundTilemap.SetTileFlags(cell, TileFlags.None);
+                groundTilemap.SetColor(cell, highlightColor);
             }
         }
     }
 
     public void ClearHighlight()
     {
-        foreach (var kvp in originalColors)
-            groundTilemap.SetColor(kvp.Key, kvp.Value);
+        if (groundTilemap == null) return;
 
+        // 색 복구
+        foreach (var kvp in originalColors)
+        {
+            groundTilemap.SetTileFlags(kvp.Key, TileFlags.None);
+            groundTilemap.SetColor(kvp.Key, kvp.Value);
+        }
         originalColors.Clear();
+
+        // 타일 복구
+        foreach (var kvp in originalTiles)
+        {
+            groundTilemap.SetTileFlags(kvp.Key, TileFlags.None);
+            groundTilemap.SetTile(kvp.Key, kvp.Value);
+        }
+        originalTiles.Clear();
     }
 
     public void SetManager(CharacterManager mgr)
     {
         manager = mgr;
+        groundTilemap = manager.groundTilemap; //SetManager 통해서도 연결 가능
     }
 
-    public SoldierResult GetCurrentResult()
-    {
-        if (manager != null)
-            return manager.GetResult(stateNumber);
-
-        Debug.LogWarning("CharacterManager 없음!");
-        return null;
-    }
-
-    //
-    public SoldierResult RequestResult(CharacterManager mgr)
-    {
-        // 매니저에게 결과 반환 요청 (중계 역할)
-        return mgr.GetResult(stateNumber);
-    }
+   
 }
