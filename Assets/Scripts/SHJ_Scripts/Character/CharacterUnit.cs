@@ -51,10 +51,6 @@ public class CharacterUnit : CharacterClass
             return;
         }
 
-        var result = manager.RequestUnitData(classUnitType);
-        if (result != null)
-        {
-            Debug.Log($"[{classUnitType}] Atk:{result.attack}, Def:{result.defense}, Move:{result.moveCost}");
-        }
+      
     }
 }

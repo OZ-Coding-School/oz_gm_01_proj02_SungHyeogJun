@@ -1,15 +1,21 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Tilemaps;
 
 public interface IUnitClass
 {
     UnitType unitType { get; }
     int movementRange { get; }
-    Dictionary<TerrainType, int> CostTable { get; }
-    TileBase[] distanceTiles { get; }
+    Dictionary<TerrainType, int> movementCost { get; }
 
-    void ShowDummyRange(Vector3Int startCell);
-    void ClearHighlight();
+    /// <summary>
+    /// 중심점을 기준으로 이동 가능한 범위 계산
+    /// InfantryClass에서는 BFS 구현
+    /// </summary>
+    HashSet<Vector3Int> ShowMoveRange(Vector3Int center);
+
+    /// <summary>
+    /// 계산된 이동 범위를 Tilemap에 색으로 표시
+    /// InfantryClass에서는 HighlightMoveRange 구현
+    /// </summary>
+
 }

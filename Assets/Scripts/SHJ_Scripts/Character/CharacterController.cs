@@ -5,44 +5,38 @@ using UnityEngine.Tilemaps;
 public class CharacterController : CharacterClass
 {
     [SerializeField] private UnitType classUnitType;
+    private IUnitClass currentClass;
     // 유닛의 병종 타입 (보병/기병/궁병 등) → 병종 능력/지형 이동/공격 방식 차이
 
     [SerializeField] private CharacterManager manager;
     // 병종 능력 데이터 요청/관리 담당 (Atk/Def/Move 등)
-
     [SerializeField] private Grid grid;
     // 타일 좌표 변환용 Grid
-    
+    private Dictionary<Vector3Int, Color> originalColors = new Dictionary<Vector3Int, Color>();
 
-    // 병종 데이터 가져오기용
-    private int movementRange;                     // 이동 범위
-    private Dictionary<TerrainType, int> costTable; // 지형별 이동 비용
-    [SerializeField] private Tilemap groundTilemap;                 // 타일 표시용 / 이동판정용
-    // Grid 없을 때 대응 타일맵 직접 사용
-    private TileBase[] distanceTiles;
-    private List<Vector3Int> movableCells;
-    private bool waitingMoveClick = false;
+    public Tilemap groundTilemap; // 타일 표시용 / 이동판정용
 
     private Vector3Int prevCell;
     private Vector3 prevPosition;
 
+    public HashSet<Vector3Int> movableCellsBFS = new HashSet<Vector3Int>();
+
+    private CharacterMoves moves;  // CharacterMoves 연결용
     protected override void Awake()   // 초기 준비 단계 (Animator/Manager 연결)
     {
         base.Awake();
-       
+
     }
     private void Start()
     {
-        // CharacterManager 연결 (싱글톤)
-        if (manager == null)
-            manager = CharacterManager.Instance;
 
-        if (manager == null)
-        {
-            Debug.LogWarning($"{name} : CharacterManager 없음!");
-            return;
-        }
-        RequestMyData();
+        manager = CharacterManager.Instance;
+
+        currentClass = manager.GetUnitClass(classUnitType);
+        moves = GetComponent<CharacterMoves>();
+        if (moves == null)
+            Debug.LogError("CharacterMoves가 붙어있지 않습니다!");
+
     }
     private void Update()
     {
@@ -67,23 +61,31 @@ public class CharacterController : CharacterClass
 
     private void CheckMoveInput() // 추가: 이동 타일 클릭 전용
     {
-        if (state != UnitState.Selected) return;
         if (!Input.GetMouseButtonDown(0)) return;
+        if (state != UnitState.Selected) return; // 선택 상태에서만
 
-        Vector3 worldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        Vector3Int clickedCell = groundTilemap.WorldToCell(worldPos);
+        Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        Vector3Int clickedCell = groundTilemap.WorldToCell(worldPoint);
 
-        if (movableCells != null && movableCells.Contains(clickedCell))
+        // 클릭 좌표를 타일 중앙 좌표로 보정 (BFS 좌표와 정확히 맞추기 위해)
+        clickedCell = new Vector3Int(clickedCell.x, clickedCell.y, 0);
+
+        Debug.Log($"[CheckMoveInput] 클릭된 셀: {clickedCell}");
+
+        if (moves == null)
         {
-            prevCell = groundTilemap.WorldToCell(transform.position);
-            prevPosition = transform.position;
-            manager.GetUnitClass(classUnitType).ClearHighlight();
-
-            transform.position = groundTilemap.GetCellCenterWorld(clickedCell);
-            ChangeState(UnitState.Action); // 이동 완료
-            HideMoveTiles();
-            OnMove();
+            Debug.LogError("[CheckMoveInput] CharacterMoves가 연결되어 있지 않음");
+            return;
         }
+
+        if (!moves.movableCellsBFS.Contains(clickedCell))
+        {
+            Debug.Log($"[CheckMoveInput] BFS 계산 결과에 없는 타일: {clickedCell}");
+            return;
+        }
+
+        Debug.Log($"[CheckMoveInput] 이동 처리 시작: {clickedCell}");
+        OnMove(clickedCell);
 
     }
     private void CheckCancelInput() //상태취소
@@ -94,8 +96,8 @@ public class CharacterController : CharacterClass
         {
             case UnitState.Selected:
                 Debug.Log("취소: 선택 해제");
-                manager.GetUnitClass(classUnitType).ClearHighlight();
-                
+                //manager.GetUnitClass(classUnitType).ClearHighlight();
+
                 HideMoveTiles();
                 break;
 
@@ -120,57 +122,52 @@ public class CharacterController : CharacterClass
     }
     private void HideMoveTiles()
     {
-        if (movableCells == null) return; //추가!
 
-        var unit = manager.GetUnitClass(classUnitType);
-        if (unit == null) return;
-
-        foreach (var cell in movableCells)
-        {
-            groundTilemap.SetColor(cell, Color.white);
-        }
-
-        movableCells = null; // 중요! 이동 후 null로
     }
     public void OnSelected()          // 유닛이 선택됨 이동표시 → UI 커맨드 입력 전 단계
     {
-        HideMoveTiles(); // 이전 잔여 타일 숨기기
-        ChangeState(UnitState.Selected);
+        Debug.Log("OnSelected 상태");
 
-        var unit = manager.GetUnitClass(classUnitType);
-        if (unit == null) return;
+        Vector3Int cell = groundTilemap.WorldToCell(transform.position);
 
-        // 현재 좌표
-        Vector3Int currentCell = (grid != null)
-            ? grid.WorldToCell(transform.position)
-            : groundTilemap.WorldToCell(transform.position);
-
-        // 이동 범위 표시만 함
-        unit.ShowDummyRange(currentCell);
-
-        // 이동 가능한 셀 배열 계산 (추후 이동용)
-        movableCells = new List<Vector3Int>();
-        for (int dx = -unit.movementRange; dx <= unit.movementRange; dx++)
+        if (moves == null)
         {
-            for (int dy = -unit.movementRange; dy <= unit.movementRange; dy++)
-            {
-                int distance = Mathf.Abs(dx) + Mathf.Abs(dy);
-                if (distance == 0 || distance > unit.movementRange) continue;
-
-                Vector3Int cell = currentCell + new Vector3Int(dx, dy, 0);
-                movableCells.Add(cell);
-            }
+            Debug.LogError("CharacterMoves 연결 안됨");
+            return;
         }
 
-        Debug.Log($"이동 범위 표시 완료 (총 {movableCells.Count}개)");
+        // BFS 계산해서 이동 가능 좌표 저장
+        moves.CalculateMoveRange(cell, currentClass.movementRange);
+
+        // 현재 유닛의 BFS 이동 가능 좌표를 가져와서 표시
+        HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
+
+        ChangeState(UnitState.Selected); // 선택 상태
+
     }
 
-    public void OnMove()              // 실제 이동 시작 상태 (조조전 이동 경로 표시 → 이동 처리)
+    public void OnMove(Vector3Int targetCell)
     {
+        if (moves == null)
+        {
+            Debug.LogError("CharacterMoves 연결 안됨");
+            return;
+        }
+
+        if (!moves.movableCellsBFS.Contains(targetCell))
+        {
+            Debug.Log($"[OnMove] 이동 불가 타일: {targetCell}");
+            return;
+        }
+
         ChangeState(UnitState.Move);
-        Debug.Log($"애니메이션진행:  OnMove()상태!");
-        OnCommand();
-        waitingMoveClick = true; // 추가: 타일 클릭 대기 상태 진입
+
+        prevPosition = transform.position;
+        transform.position = groundTilemap.GetCellCenterWorld(targetCell); // 타일 중심으로 이동
+
+        Debug.Log($"[OnMove] 이동 완료: {targetCell}");
+
+        OnCommand(); // 이동 후 커맨드 상태로 전환
     }
 
     public void OnCommand()           // 커맨드 메뉴 진입 (이동/공격/책략 선택 단계)
@@ -180,7 +177,7 @@ public class CharacterController : CharacterClass
 
     }
 
-   
+
 
     public void OnAction()            // 공격/책략 실행 상태 (실제 액션 처리)
     {
@@ -197,21 +194,51 @@ public class CharacterController : CharacterClass
         ChangeState(UnitState.Idle);
     }
 
-    private void RequestMyData()      // 병종 능력 요청 (Atk/Def/Move 등 불러오기)
+    //private void RequestMyData()      // 병종 능력 요청 (Atk/Def/Move 등 불러오기)
+    //{
+    //}
+
+    public void HighlightMoveRangeOnTilemap(HashSet<Vector3Int> positions)
     {
-        var unit = manager.GetUnitClass(classUnitType);
-        if (unit == null)
+        if (groundTilemap == null) return;
+
+        foreach (var pos in positions)
         {
-            Debug.LogWarning($"병종 {classUnitType} 클래스를 찾을 수 없음");
-            return;
+            TileBase tile = groundTilemap.GetTile(pos);
+            if (tile == null) continue;
+
+            // 타일 색 변경
+            Color originalColor = groundTilemap.GetColor(pos);
+            if (!originalColors.ContainsKey(pos))
+                originalColors[pos] = originalColor;
+
+            // 타일 전체에 색칠 (Tilemap Flag를 없애야 적용 가능)
+            groundTilemap.SetTileFlags(pos, TileFlags.None);
+            groundTilemap.SetColor(pos, new Color(0f, 0.5f, 1f, 0.5f));
+        }
+    }
+
+    public void ClearMoveRangeHighlight()
+    {
+        if (groundTilemap == null) return;
+
+        foreach (var pos in originalColors.Keys)
+        {
+            groundTilemap.SetColor(pos, originalColors[pos]);
+            Debug.Log($"[ClearHighlight] 좌표 색 복원: {pos}");
         }
 
-        movementRange = unit.movementRange;
-        costTable = unit.CostTable;
-        groundTilemap = manager.groundTilemap;
+        originalColors.Clear();
+    }
 
-        // 배열 연결
-        distanceTiles = ((InfantryClass)unit).distanceTiles;
+    public bool GetCellWalkable(Vector3Int cell)
+    {
+        if (manager == null || manager.GetTerrainMap() == null) return false;
+
+        var terrainData = manager.GetTerrainMap().GetTerrain(cell);
+        if (terrainData == null) return false;
+
+        return terrainData.walkable;
     }
 }
 
