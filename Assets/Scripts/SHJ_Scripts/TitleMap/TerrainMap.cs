@@ -2,31 +2,36 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Tilemaps;
+
 [System.Serializable]
 public class TerrainMap : MonoBehaviour
 {
-
+    // 타일맵 참조: 지형 타일이 깔린 Tilemap
     public Tilemap groundTilemap;
 
     [Header("타일 그룹들")]
-    public TileBase[] grassTiles;
-    public TileBase[] forestTiles;
-    public TileBase[] mountainTiles;
-    public TileBase[] wallTiles;
-    public TileBase[] acropolisTiles;
+    public TileBase[] grassTiles;     // 풀 지형
+    public TileBase[] forestTiles;    // 숲 지형
+    public TileBase[] mountainTiles;  // 산 지형
+    public TileBase[] wallTiles;      // 벽 지형
+    public TileBase[] acropolisTiles; // 성채 지형
 
-    // 각 Terrain 설정 파일
     [Header("Terrain 설정들")]
-    public TerrainData grassTerrain;
-    public TerrainData forestTerrain;
-    public TerrainData mountainTerrain;
-    public TerrainData wallTerrain;
-    public TerrainData acropolisTerrain;
+    public TerrainData grassTerrain;     // 풀 지형 속성
+    public TerrainData forestTerrain;    // 숲 지형 속성
+    public TerrainData mountainTerrain;  // 산 지형 속성
+    public TerrainData wallTerrain;      // 벽 지형 속성
+    public TerrainData acropolisTerrain; // 성채 지형 속성
 
+    // 타일과 TerrainData 매핑용 딕셔너리
     private Dictionary<TileBase, TerrainData> table;
-    // Start is called before the first frame update
+
+    // Node 2차원 배열: 각 타일 좌표(Node.cell)만 저장
+    private Node[,] nodes;
+
     private void Awake()
     {
+        // 1. 타일과 TerrainData 연결
         table = new Dictionary<TileBase, TerrainData>();
         RegisterTiles(grassTiles, grassTerrain);
         RegisterTiles(forestTiles, forestTerrain);
@@ -34,8 +39,19 @@ public class TerrainMap : MonoBehaviour
         RegisterTiles(wallTiles, wallTerrain);
         RegisterTiles(acropolisTiles, acropolisTerrain);
 
+        // 2. 벽 타일에 Grid Collider 적용
         ApplyWallCollider();
+
+        // 3. Node 생성: 좌표만 저장
+        CreateNodes();
+
+        // 4. TerrainData.walkable=false인 타일에 이동 불가 처리
+        ApplyWalkableFlags();
     }
+
+    /// <summary>
+    /// 각 TileBase 배열과 해당 TerrainData를 딕셔너리에 등록
+    /// </summary>
     private void RegisterTiles(TileBase[] tiles, TerrainData data)
     {
         foreach (var tile in tiles)
@@ -47,49 +63,84 @@ public class TerrainMap : MonoBehaviour
         }
     }
 
-    // 특정 셀 좌표(Vector3Int)를 주면
-    // 그 위치의 지형 정보(TerrainData)를 반환하는 함수
+    /// <summary>
+    /// 주어진 좌표의 TerrainData 반환
+    /// Node에서 직접 walkable을 가지고 있지 않고 여기서 참조
+    /// </summary>
     public TerrainData GetTerrain(Vector3Int cellPos)
     {
-        // Tilemap에게 물어본다:
-        // "이 셀 좌표에 깔린 타일 에셋이 뭐야?"
         TileBase tile = groundTilemap.GetTile(cellPos);
 
-        // 타일이 없다면 (빈 칸이면)
-        if (tile == null)
-            return null;
+        if (tile == null) return null;
 
-        // Dictionary에서 이 타일에 해당하는 TerrainData를 찾는다
         if (table.TryGetValue(tile, out TerrainData data))
             return data;
 
-        // 타일은 있는데, 지형 정보가 등록되지 않은 경우
         return null;
     }
 
+    /// <summary>
+    /// wallTiles 배열에 포함된 타일에는 Grid Collider 적용
+    /// 기존의 벽 기능 유지
+    /// </summary>
     private void ApplyWallCollider()
     {
-        // cellBounds : Tilemap의 전체 셀 영역을 정의하는 BoundsInt
         BoundsInt bounds = groundTilemap.cellBounds;
 
-        // bounds.allPositionsWithin : (minX~maxX, minY~maxY) 모든 셀 좌표를 순회하는 IEnumerable<Vector3Int>
         foreach (var pos in bounds.allPositionsWithin)
         {
-            // 해당 좌표의 타일 가져오기
             TileBase tile = groundTilemap.GetTile(pos);
-
-            // 타일이 없으면 건너뛰기
             if (tile == null) continue;
 
-            // wallTiles 배열에 tile이 포함되어 있는지 검사
             foreach (var wallTile in wallTiles)
             {
                 if (tile == wallTile)
                 {
-                    // 벽 타일이면 Grid Collider 부여
                     groundTilemap.SetColliderType(pos, Tile.ColliderType.Grid);
-                    break; // 더 검사할 필요 없음
+                    break;
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tilemap 전체 셀 좌표를 Node로 생성
+    /// Node는 좌표(cell)만 가지며 이동 가능 여부는 TerrainData에서 판단
+    /// </summary>
+    private void CreateNodes()
+    {
+        BoundsInt bounds = groundTilemap.cellBounds;
+        int width = bounds.size.x;
+        int height = bounds.size.y;
+
+        nodes = new Node[width, height];
+        Vector3Int offset = bounds.min;
+
+        foreach (var pos in bounds.allPositionsWithin)
+        {
+            Vector3Int index = pos - offset;
+
+            // Node 생성: 좌표만 저장
+            nodes[index.x, index.y] = new Node(pos);
+        }
+    }
+
+    /// <summary>
+    /// 각 Node 좌표에 해당하는 타일의 TerrainData.walkable을 확인
+    /// false인 경우 이동 불가 처리(Grid Collider 적용)
+    /// </summary>
+    private void ApplyWalkableFlags()
+    {
+        BoundsInt bounds = groundTilemap.cellBounds;
+
+        foreach (var pos in bounds.allPositionsWithin)
+        {
+            TerrainData data = GetTerrain(pos);
+
+            if (data != null && data.walkable == false)
+            {
+                // 이동 불가 타일이면 Collider 설정
+                groundTilemap.SetColliderType(pos, Tile.ColliderType.Grid);
             }
         }
     }

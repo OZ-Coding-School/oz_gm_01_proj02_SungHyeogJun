@@ -12,7 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: da216dbbc61382c44b792a860c8076f1, type: 3}
   m_Name: UnitClassData
   m_EditorClassIdentifier: 
-  ClassType: 0
-  baseAttack: 0
-  baseDefense: 0
-  baseSpeed: 0
+  _distanceTiles: []
+  highlightColor: {r: 0, g: 1, b: 0, a: 1}

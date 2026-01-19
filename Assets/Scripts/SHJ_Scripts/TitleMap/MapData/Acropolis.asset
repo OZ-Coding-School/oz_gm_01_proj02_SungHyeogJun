@@ -12,5 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 984f681909ec88d4b98100f34dff3713, type: 3}
   m_Name: Acropolis
   m_EditorClassIdentifier: 
-  walkable: 0
+  walkable: 1
   type: 4

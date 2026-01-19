@@ -12,5 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 984f681909ec88d4b98100f34dff3713, type: 3}
   m_Name: Wall
   m_EditorClassIdentifier: 
-  walkable: 1
-  type: 5
+  walkable: 0
+  type: 128
