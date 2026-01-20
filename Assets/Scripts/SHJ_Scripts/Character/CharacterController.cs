@@ -1,65 +1,114 @@
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
+// 캐릭터(유닛)를 직접 조작하는 컨트롤러 클래스
+// 선택, 이동, 공격 범위 표시를 담당
 public class CharacterController : CharacterClass
 {
     [SerializeField] private UnitType classUnitType;
+    // 유닛의 병종 타입
+    // CharacterManager에서 병종별 데이터(IUnitClass)를 가져오기 위한 키
+
     private IUnitClass currentClass;
-    // 유닛의 병종 타입 (보병/기병/궁병 등) → 병종 능력/지형 이동/공격 방식 차이
+    // 현재 유닛이 사용하는 병종 데이터
+    // 이동 거리, 공격 범위 계산에 사용됨
 
     [SerializeField] private CharacterManager manager;
-    // 병종 능력 데이터 요청/관리 담당 (Atk/Def/Move 등)
-    [SerializeField] private Grid grid;
-    // 타일 좌표 변환용 Grid
-    private Dictionary<Vector3Int, Color> originalColors = new Dictionary<Vector3Int, Color>();
+    // 병종 능력, 지형 데이터 등을 관리하는 싱글톤 매니저
 
-    public Tilemap groundTilemap; // 타일 표시용 / 이동판정용
+    [SerializeField] private Grid grid;
+    // 월드 좌표를 타일 좌표로 변환하기 위한 Grid
+
+    private Dictionary<Vector3Int, Color> originalColors = new Dictionary<Vector3Int, Color>();
+    // 이동 범위 표시 전에 타일이 가지고 있던 원래 색을 저장
+    // 이동 표시 해제 시 원상 복구용
+
+    public Tilemap groundTilemap;
+    // 실제 바닥 타일맵
+    // 이동 범위 색조 변경과 공격 범위 타일 교체에 사용
 
     private Vector3Int prevCell;
+    // 이전 셀 좌표
+    // 현재 코드에서는 사용되지 않지만 남아 있음
+
     private Vector3 prevPosition;
+    // 이동 취소 시 원래 위치로 되돌리기 위한 좌표 저장
 
     public HashSet<Vector3Int> movableCellsBFS = new HashSet<Vector3Int>();
+    // BFS로 계산된 이동 가능 셀 집합
+    // CharacterMoves에서 계산된 결과를 참조
 
-    private CharacterMoves moves;  // CharacterMoves 연결용
+    private CharacterMoves moves;
+    // 이동 가능 범위를 계산하는 컴포넌트
 
-    public TileBase attackOutlineTile; // 인스펙터에서 할당
+    public TileBase attackOutlineTile;
+    // 공격 범위를 표시하기 위한 테두리 전용 타일
 
     private HashSet<Vector3Int> attackCells = new HashSet<Vector3Int>();
-
-   
-    protected override void Awake()   // 초기 준비 단계 (Animator/Manager 연결)
+    // 현재 공격 범위로 표시된 셀들
+    // 공격 범위 제거 시 사용
+    public Camera mainCamera;
+    public GameObject commandUI;
+    [SerializeField] private Vector2 uiOffset = new Vector2(100f, 50f);
+    [SerializeField] private Comment commentUI;
+    protected override void Awake()
     {
+        // 부모 클래스(CharacterClass)의 초기화 로직 실행
         base.Awake();
-
     }
+
     private void Start()
     {
-
+        // CharacterManager 싱글톤 인스턴스 참조
         manager = CharacterManager.Instance;
 
+        // 병종 타입을 기준으로 병종 데이터 획득
         currentClass = manager.GetUnitClass(classUnitType);
+
+        // 이동 계산 컴포넌트 가져오기
         moves = GetComponent<CharacterMoves>();
+
+        // 이동 컴포넌트가 없으면 정상 동작 불가
         if (moves == null)
             Debug.LogError("CharacterMoves가 붙어있지 않습니다!");
 
-        // 공격 outline tile 생성
+        // 공격 범위 표시용 테두리 타일 생성
+        // 내부는 투명, 외곽만 색이 있음
         attackOutlineTile = CreateBorderTile(32, Color.red);
     }
+
     private void Update()
     {
+        // 유닛 선택 입력 처리
         CheckSelectInput();
+
+        // 이동 타일 클릭 입력 처리
         CheckMoveInput();
+
+        // 우클릭 취소 입력 처리
         CheckCancelInput();
     }
-    
-    private void CheckSelectInput() // 추가: 유닛 선택 전용
+    private void LateUpdate()
     {
+        if (state == UnitState.Command && commandUI != null)
+        {
+            UpdateCommandUIPosition();
+        }
+    }
+    private void CheckSelectInput()
+    {
+        // 좌클릭이 아니면 처리하지 않음
         if (!Input.GetMouseButtonDown(0)) return;
 
+        // 마우스 화면 좌표를 월드 좌표로 변환
         Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+        // 해당 위치에 콜라이더가 있는지 검사
         RaycastHit2D hit = Physics2D.Raycast(worldPoint, Vector2.zero);
 
+        // 클릭한 오브젝트가 자기 자신이면 선택 처리
         if (hit && hit.transform.gameObject == gameObject)
         {
             Debug.Log("클릭: 유닛 선택");
@@ -67,25 +116,33 @@ public class CharacterController : CharacterClass
         }
     }
 
-    private void CheckMoveInput() // 추가: 이동 타일 클릭 전용
+    private void CheckMoveInput()
     {
+        // 좌클릭이 아니면 처리하지 않음
         if (!Input.GetMouseButtonDown(0)) return;
-        if (state != UnitState.Selected) return; // 선택 상태에서만
 
+        // 선택 상태가 아니면 이동 불가
+        if (state != UnitState.Selected) return;
+
+        // 마우스 위치를 월드 좌표로 변환
         Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+        // 월드 좌표를 타일 좌표로 변환
         Vector3Int clickedCell = groundTilemap.WorldToCell(worldPoint);
 
-        // 클릭 좌표를 타일 중앙 좌표로 보정 (BFS 좌표와 정확히 맞추기 위해)
+        // BFS 계산 좌표와 맞추기 위해 z값을 0으로 고정
         clickedCell = new Vector3Int(clickedCell.x, clickedCell.y, 0);
 
         Debug.Log($"[CheckMoveInput] 클릭된 셀: {clickedCell}");
 
+        // 이동 컴포넌트가 없으면 처리 중단
         if (moves == null)
         {
             Debug.LogError("[CheckMoveInput] CharacterMoves가 연결되어 있지 않음");
             return;
         }
 
+        // 이동 가능 범위에 없는 셀이면 무시
         if (!moves.movableCellsBFS.Contains(clickedCell))
         {
             Debug.Log($"[CheckMoveInput] BFS 계산 결과에 없는 타일: {clickedCell}");
@@ -94,124 +151,129 @@ public class CharacterController : CharacterClass
 
         Debug.Log($"[CheckMoveInput] 이동 처리 시작: {clickedCell}");
         OnMove(clickedCell);
-
     }
-    private void CheckCancelInput() //상태취소
+
+    private void CheckCancelInput()
     {
-        if (!Input.GetMouseButtonDown(1)) return; // 오른쪽 클릭
+        // 우클릭이 아니면 처리하지 않음
+        if (!Input.GetMouseButtonDown(1)) return;
 
         switch (state)
         {
             case UnitState.Selected:
+                // 선택 상태에서 취소하면 이동/공격 표시 제거
                 Debug.Log("취소: 선택 해제");
-                //manager.GetUnitClass(classUnitType).ClearHighlight();
-
                 HideMoveTiles();
                 break;
 
             case UnitState.Move:
+                // 이동 중 취소하면 다시 선택 상태로
                 Debug.Log("취소: 이동 선택 취소");
-                OnSelected(); // 이동 표시만 다시
-                break;
-
-            case UnitState.Command:
-                Debug.Log("취소: 커맨드 취소 → 이동 선택으로");
-                // 위치 롤백
-                transform.position = prevPosition;
-
-                // 상태 복구
-                ChangeState(UnitState.Selected);
                 OnSelected();
                 break;
 
-            default:
+            case UnitState.Command:
+                // 커맨드 상태 취소 시 위치 복구
+                Debug.Log("취소: 커맨드 취소 → 이동 선택으로");
+                transform.position = prevPosition;
+                ChangeState(UnitState.Selected);
+                OnSelected();
                 break;
         }
     }
+
     private void HideMoveTiles()
     {
-
+        // 현재 구현은 비어 있음
+        // 이동 타일만 숨기기 위한 용도로 의도된 함수
     }
-    public void OnSelected()          // 유닛이 선택됨 이동표시 → UI 커맨드 입력 전 단계
-    {
-        Debug.Log("OnSelected 상태");
 
+    public void OnSelected()
+    {
         Vector3Int cell = groundTilemap.WorldToCell(transform.position);
 
-        if (moves == null)
-        {
-            Debug.LogError("CharacterMoves 연결 안됨");
-            return;
-        }
+    if (moves == null) return;
 
-        // 1BFS 계산해서 이동 가능 좌표 저장
-        moves.CalculateMoveRange(cell, currentClass.movementRange);
+    moves.CalculateMoveRange(cell, currentClass.movementRange);
 
-        // 2이동 가능 범위 표시
-        HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
+    // 기존 이동 색 제거
+    ClearMoveRangeHighlight();
 
-        // 3 공격 범위 계산 (보병 기준 8방향)
-        HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
+    // 공격 범위 계산 후 attackCells에 저장
+    HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
+    attackCells = attackRange; // ← 반드시 여기서 미리 채워야 함
 
-        // 4 공격 범위 표시
-        HighlightAttackRangeOnTilemap(attackRange);
+    // 공격 범위 표시 (테두리만)
+    HighlightAttackRangeOnTilemap(attackRange);
 
+    // 이동 범위 표시 (공격 범위 위는 제외)
+    HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
 
-        // 5상태 변경
-        ChangeState(UnitState.Selected);
+    ChangeState(UnitState.Selected);
     }
 
     public void OnMove(Vector3Int targetCell)
     {
+        // 이동 컴포넌트가 없으면 처리 중단
         if (moves == null)
         {
             Debug.LogError("CharacterMoves 연결 안됨");
             return;
         }
 
+        // 이동 가능 범위가 아니면 처리 중단
         if (!moves.movableCellsBFS.Contains(targetCell))
         {
             Debug.Log($"[OnMove] 이동 불가 타일: {targetCell}");
             return;
         }
 
+        // 상태를 이동 상태로 변경
         ChangeState(UnitState.Move);
 
+        // 이동 취소 대비 현재 위치 저장
         prevPosition = transform.position;
-        transform.position = groundTilemap.GetCellCenterWorld(targetCell); // 타일 중심으로 이동
+
+        // 타일 중앙 좌표로 이동
+        transform.position = groundTilemap.GetCellCenterWorld(targetCell);
 
         Debug.Log($"[OnMove] 이동 완료: {targetCell}");
+
+        // 이동 및 공격 하이라이트 제거
         HideHighlights();
-        OnCommand(); // 이동 후 커맨드 상태로 전환
+
+        // 이동 후 커맨드 상태로 전환
+        OnCommand();
     }
 
-    public void OnCommand()           // 커맨드 메뉴 진입 (이동/공격/책략 선택 단계)
+    public void OnCommand()
     {
         ChangeState(UnitState.Command);
-        Debug.Log($"애니메이션진행끝:  OnCommand()상태!");
+        Debug.Log("애니메이션 진행 끝: OnCommand() 상태!");
 
+        if (commandUI != null)
+            commandUI.SetActive(true);
+
+        UpdateCommandUIPosition();
     }
 
-
-
-    public void OnAction()            // 공격/책략 실행 상태 (실제 액션 처리)
+    public void OnAction()
     {
+        // 실제 행동 실행 상태
         ChangeState(UnitState.Action);
     }
 
-    public void OnEnd()               // 턴 종료 상태 (삼조전 스타일로 ‘암전/끝난 유닛 표시’)
+    public void OnEnd()
     {
+        // 턴 종료 상태
         ChangeState(UnitState.End);
     }
 
-    public void OnDeselected()        // 선택 해제 → 다시 Idle (기본 대기 상태)
+    public void OnDeselected()
     {
+        // 선택 해제 후 대기 상태
         ChangeState(UnitState.Idle);
     }
-
-    //private void RequestMyData()      // 병종 능력 요청 (Atk/Def/Move 등 불러오기)
-    //{
-    //}
 
     public void HighlightMoveRangeOnTilemap(HashSet<Vector3Int> positions)
     {
@@ -219,15 +281,16 @@ public class CharacterController : CharacterClass
 
         foreach (var pos in positions)
         {
+            // 공격 범위 타일 위는 색 변경 안함
+            if (attackCells.Contains(pos)) continue;
+
             TileBase tile = groundTilemap.GetTile(pos);
             if (tile == null) continue;
 
-            // 타일 색 변경
             Color originalColor = groundTilemap.GetColor(pos);
             if (!originalColors.ContainsKey(pos))
                 originalColors[pos] = originalColor;
 
-            // 타일 전체에 색칠 (Tilemap Flag를 없애야 적용 가능)
             groundTilemap.SetTileFlags(pos, TileFlags.None);
             groundTilemap.SetColor(pos, new Color(0f, 0.5f, 1f, 0.5f));
         }
@@ -235,38 +298,57 @@ public class CharacterController : CharacterClass
 
     public void ClearMoveRangeHighlight()
     {
+        // 이동 범위 표시 제거
         if (groundTilemap == null) return;
 
         foreach (var pos in originalColors.Keys)
         {
+            // 저장해둔 원래 색으로 복구
             groundTilemap.SetColor(pos, originalColors[pos]);
             Debug.Log($"[ClearHighlight] 좌표 색 복원: {pos}");
         }
 
+        // 저장 데이터 초기화
         originalColors.Clear();
     }
 
     public bool GetCellWalkable(Vector3Int cell)
     {
+        // 매니저나 지형 데이터가 없으면 이동 불가
         if (manager == null || manager.GetTerrainMap() == null) return false;
 
+        // 해당 셀의 지형 데이터 획득
         var terrainData = manager.GetTerrainMap().GetTerrain(cell);
         if (terrainData == null) return false;
 
+        // 지형이 이동 가능하면 true 반환
         return terrainData.walkable;
     }
+
     private Dictionary<Vector3Int, TileBase> originalTiles = new Dictionary<Vector3Int, TileBase>();
+    // 공격 범위 표시 전의 원래 타일 저장용
+
     public void HighlightAttackRangeOnTilemap(HashSet<Vector3Int> positions)
     {
+        if (groundTilemap == null) return;
+
         attackCells = positions;
 
         foreach (var pos in positions)
         {
+            TileBase originalTile = groundTilemap.GetTile(pos);
+            if (originalTile == null) continue;
+
             if (!originalTiles.ContainsKey(pos))
-                originalTiles[pos] = groundTilemap.GetTile(pos);
+                originalTiles[pos] = originalTile;
 
             groundTilemap.SetTileFlags(pos, TileFlags.None);
+
+            // 공격 범위 테두리 타일로 교체
             groundTilemap.SetTile(pos, attackOutlineTile);
+
+            // **이전 색 초기화 (투명)**
+            groundTilemap.SetColor(pos, Color.white);
         }
     }
 
@@ -274,6 +356,7 @@ public class CharacterController : CharacterClass
     {
         foreach (var pos in attackCells)
         {
+            // 저장된 원래 타일로 복구
             if (originalTiles.ContainsKey(pos))
                 groundTilemap.SetTile(pos, originalTiles[pos]);
         }
@@ -281,13 +364,17 @@ public class CharacterController : CharacterClass
         originalTiles.Clear();
         attackCells.Clear();
     }
+
     private TileBase CreateBorderTile(int size, Color borderColor)
     {
+        // 픽셀 단위 텍스처 생성
         Texture2D tex = new Texture2D(size, size);
         tex.filterMode = FilterMode.Point;
 
+        // 투명 색상 정의
         Color transparent = new Color(0, 0, 0, 0);
 
+        // 외곽 픽셀만 색을 채움
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
@@ -297,34 +384,58 @@ public class CharacterController : CharacterClass
             }
         }
 
+        // 텍스처 변경 적용
         tex.Apply();
 
-        // **중요!!! PPU는 tile pixel size와 동일**
+        // 텍스처를 스프라이트로 변환
         Sprite sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
 
+        // 타일 객체 생성
         Tile tile = ScriptableObject.CreateInstance<Tile>();
+
+        // 스프라이트 할당
         tile.sprite = sprite;
 
-        // 투명 배경 유지
+        // 기본 색조 유지
         tile.color = Color.white;
 
         return tile;
     }
 
-    // *** 이동/공격 타일 숨기기 (하지만 데이터는 유지) ***
     private void HideHighlights()
     {
+        // 이동 범위와 공격 범위 표시를 모두 제거
         ClearMoveRangeHighlight();
         ClearAttackRangeHighlight();
     }
 
-    // *** 이동/공격 타일 다시 표시 ***
     private void ShowHighlights()
     {
+        // 이동 범위와 공격 범위를 다시 표시
         HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
         HighlightAttackRangeOnTilemap(attackCells);
     }
+    private void UpdateCommandUIPosition()
+    {
+        Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position);
 
-   
+        float uiWidth = ((RectTransform)commandUI.transform).rect.width;
+        float uiHeight = ((RectTransform)commandUI.transform).rect.height;
+
+        // 기본: 오른쪽에 배치
+        screenPos.x += uiOffset.x;
+        screenPos.y += uiOffset.y;
+
+        // 화면 경계 체크
+        if (screenPos.x + uiWidth / 2 > Screen.width)
+        {
+            // 오른쪽 끝 넘어가면 왼쪽으로 붙임
+            screenPos.x = screenPos.x - uiWidth - 2 * uiOffset.x;
+        }
+
+        // 위/아래 화면 경계 처리
+        screenPos.y = Mathf.Clamp(screenPos.y, uiHeight / 2, Screen.height - uiHeight / 2);
+
+        commandUI.transform.position = screenPos;
+    }
 }
-
