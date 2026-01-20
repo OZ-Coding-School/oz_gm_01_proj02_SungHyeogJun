@@ -22,6 +22,12 @@ public class CharacterController : CharacterClass
     public HashSet<Vector3Int> movableCellsBFS = new HashSet<Vector3Int>();
 
     private CharacterMoves moves;  // CharacterMoves 연결용
+
+    public TileBase attackOutlineTile; // 인스펙터에서 할당
+
+    private HashSet<Vector3Int> attackCells = new HashSet<Vector3Int>();
+
+   
     protected override void Awake()   // 초기 준비 단계 (Animator/Manager 연결)
     {
         base.Awake();
@@ -37,6 +43,8 @@ public class CharacterController : CharacterClass
         if (moves == null)
             Debug.LogError("CharacterMoves가 붙어있지 않습니다!");
 
+        // 공격 outline tile 생성
+        attackOutlineTile = CreateBorderTile(32, Color.red);
     }
     private void Update()
     {
@@ -44,7 +52,7 @@ public class CharacterController : CharacterClass
         CheckMoveInput();
         CheckCancelInput();
     }
-
+    
     private void CheckSelectInput() // 추가: 유닛 선택 전용
     {
         if (!Input.GetMouseButtonDown(0)) return;
@@ -142,11 +150,12 @@ public class CharacterController : CharacterClass
         // 2이동 가능 범위 표시
         HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
 
-        // 3공격 범위 계산 (보병 기준 8방향)
+        // 3 공격 범위 계산 (보병 기준 8방향)
         HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
 
-        // 4공격 범위 태두리 표시
+        // 4 공격 범위 표시
         HighlightAttackRangeOnTilemap(attackRange);
+
 
         // 5상태 변경
         ChangeState(UnitState.Selected);
@@ -172,7 +181,7 @@ public class CharacterController : CharacterClass
         transform.position = groundTilemap.GetCellCenterWorld(targetCell); // 타일 중심으로 이동
 
         Debug.Log($"[OnMove] 이동 완료: {targetCell}");
-
+        HideHighlights();
         OnCommand(); // 이동 후 커맨드 상태로 전환
     }
 
@@ -237,27 +246,6 @@ public class CharacterController : CharacterClass
         originalColors.Clear();
     }
 
-
-
-    public void HighlightAttackRangeOnTilemap(HashSet<Vector3Int> attackPositions)
-    {
-        if (groundTilemap == null) return;
-
-        foreach (var pos in attackPositions)
-        {
-            TileBase tile = groundTilemap.GetTile(pos);
-            if (tile == null) continue;
-
-            // 기존 색 저장
-            if (!originalColors.ContainsKey(pos))
-                originalColors[pos] = groundTilemap.GetColor(pos);
-
-            // 태두리용 색/Tile 표시 (현재는 Color만, 나중에 Outline Tile 사용 가능)
-            groundTilemap.SetTileFlags(pos, TileFlags.None);
-            groundTilemap.SetColor(pos, new Color(1f, 0f, 0f, 5.0f)); // 투명 → 테두리용 placeholder
-        }
-    }
-
     public bool GetCellWalkable(Vector3Int cell)
     {
         if (manager == null || manager.GetTerrainMap() == null) return false;
@@ -267,5 +255,76 @@ public class CharacterController : CharacterClass
 
         return terrainData.walkable;
     }
+    private Dictionary<Vector3Int, TileBase> originalTiles = new Dictionary<Vector3Int, TileBase>();
+    public void HighlightAttackRangeOnTilemap(HashSet<Vector3Int> positions)
+    {
+        attackCells = positions;
+
+        foreach (var pos in positions)
+        {
+            if (!originalTiles.ContainsKey(pos))
+                originalTiles[pos] = groundTilemap.GetTile(pos);
+
+            groundTilemap.SetTileFlags(pos, TileFlags.None);
+            groundTilemap.SetTile(pos, attackOutlineTile);
+        }
+    }
+
+    public void ClearAttackRangeHighlight()
+    {
+        foreach (var pos in attackCells)
+        {
+            if (originalTiles.ContainsKey(pos))
+                groundTilemap.SetTile(pos, originalTiles[pos]);
+        }
+
+        originalTiles.Clear();
+        attackCells.Clear();
+    }
+    private TileBase CreateBorderTile(int size, Color borderColor)
+    {
+        Texture2D tex = new Texture2D(size, size);
+        tex.filterMode = FilterMode.Point;
+
+        Color transparent = new Color(0, 0, 0, 0);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                bool border = (x < 2 || y < 2 || x > size - 3 || y > size - 3);
+                tex.SetPixel(x, y, border ? borderColor : transparent);
+            }
+        }
+
+        tex.Apply();
+
+        // **중요!!! PPU는 tile pixel size와 동일**
+        Sprite sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+
+        Tile tile = ScriptableObject.CreateInstance<Tile>();
+        tile.sprite = sprite;
+
+        // 투명 배경 유지
+        tile.color = Color.white;
+
+        return tile;
+    }
+
+    // *** 이동/공격 타일 숨기기 (하지만 데이터는 유지) ***
+    private void HideHighlights()
+    {
+        ClearMoveRangeHighlight();
+        ClearAttackRangeHighlight();
+    }
+
+    // *** 이동/공격 타일 다시 표시 ***
+    private void ShowHighlights()
+    {
+        HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
+        HighlightAttackRangeOnTilemap(attackCells);
+    }
+
+   
 }
 

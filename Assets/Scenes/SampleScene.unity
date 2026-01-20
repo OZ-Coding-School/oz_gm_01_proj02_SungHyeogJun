@@ -9968,8 +9968,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cfde5232d75806a458e167cc947186c1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  infantry: {fileID: 547444746}
-  groundTilemap: {fileID: 159517330}
+  terrainMap: {fileID: 912274723}
 --- !u!4 &547444745
 Transform:
   m_ObjectHideFlags: 0
@@ -9997,8 +9996,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: da216dbbc61382c44b792a860c8076f1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _distanceTiles: []
-  highlightColor: {r: 0, g: 0.11260891, b: 1, a: 1}
+  moveTilemap: {fileID: 159517330}
 --- !u!1 &548735428
 GameObject:
   m_ObjectHideFlags: 0
@@ -14798,6 +14796,7 @@ GameObject:
   - component: {fileID: 1192839304}
   - component: {fileID: 1192839306}
   - component: {fileID: 1192839307}
+  - component: {fileID: 1192839310}
   - component: {fileID: 1192839309}
   - component: {fileID: 1192839308}
   m_Layer: 0
@@ -14964,6 +14963,18 @@ BoxCollider2D:
   serializedVersion: 2
   m_Size: {x: 0.8727273, y: 0.8727273}
   m_EdgeRadius: 0
+--- !u!114 &1192839310
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1192839303}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 324b2424b19cea0469f4843f1413b533, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1202819121
 GameObject:
   m_ObjectHideFlags: 0
