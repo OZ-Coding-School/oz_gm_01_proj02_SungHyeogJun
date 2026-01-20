@@ -136,14 +136,20 @@ public class CharacterController : CharacterClass
             return;
         }
 
-        // BFS 계산해서 이동 가능 좌표 저장
+        // 1BFS 계산해서 이동 가능 좌표 저장
         moves.CalculateMoveRange(cell, currentClass.movementRange);
 
-        // 현재 유닛의 BFS 이동 가능 좌표를 가져와서 표시
+        // 2이동 가능 범위 표시
         HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
 
-        ChangeState(UnitState.Selected); // 선택 상태
+        // 3공격 범위 계산 (보병 기준 8방향)
+        HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
 
+        // 4공격 범위 태두리 표시
+        HighlightAttackRangeOnTilemap(attackRange);
+
+        // 5상태 변경
+        ChangeState(UnitState.Selected);
     }
 
     public void OnMove(Vector3Int targetCell)
@@ -229,6 +235,27 @@ public class CharacterController : CharacterClass
         }
 
         originalColors.Clear();
+    }
+
+
+
+    public void HighlightAttackRangeOnTilemap(HashSet<Vector3Int> attackPositions)
+    {
+        if (groundTilemap == null) return;
+
+        foreach (var pos in attackPositions)
+        {
+            TileBase tile = groundTilemap.GetTile(pos);
+            if (tile == null) continue;
+
+            // 기존 색 저장
+            if (!originalColors.ContainsKey(pos))
+                originalColors[pos] = groundTilemap.GetColor(pos);
+
+            // 태두리용 색/Tile 표시 (현재는 Color만, 나중에 Outline Tile 사용 가능)
+            groundTilemap.SetTileFlags(pos, TileFlags.None);
+            groundTilemap.SetColor(pos, new Color(1f, 0f, 0f, 5.0f)); // 투명 → 테두리용 placeholder
+        }
     }
 
     public bool GetCellWalkable(Vector3Int cell)

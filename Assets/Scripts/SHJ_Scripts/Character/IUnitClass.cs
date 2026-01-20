@@ -18,4 +18,6 @@ public interface IUnitClass
     /// InfantryClass에서는 HighlightMoveRange 구현
     /// </summary>
 
+    HashSet<Vector3Int> ShowAttackRange(Vector3Int center);
+
 }

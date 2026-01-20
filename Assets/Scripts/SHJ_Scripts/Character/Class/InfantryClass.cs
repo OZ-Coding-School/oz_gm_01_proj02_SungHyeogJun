@@ -70,5 +70,28 @@ public class InfantryClass : MonoBehaviour, IUnitClass
         return moveRangePositions; // ← 계산 결과 반환
     }
 
+    public HashSet<Vector3Int> ShowAttackRange(Vector3Int center)
+    {
+        HashSet<Vector3Int> attackPositions = new HashSet<Vector3Int>();
 
+        // 보병 기준 공격 범위: 중심 1칸 주변 (8방향)
+        Vector3Int[] dirs = {
+            Vector3Int.up,
+            Vector3Int.down,
+            Vector3Int.left,
+            Vector3Int.right,
+            new Vector3Int(1, 1, 0),
+            new Vector3Int(1, -1, 0),
+            new Vector3Int(-1, 1, 0),
+            new Vector3Int(-1, -1, 0)
+        };
+
+        foreach (var d in dirs)
+        {
+            Vector3Int pos = center + d;
+            attackPositions.Add(pos);
+        }
+
+        return attackPositions;
+    }
 }
