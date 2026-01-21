@@ -10,7 +10,7 @@ public class CharacterClass : MonoBehaviour
 
     [SerializeField] private Animator animator;
     protected UnitState state = UnitState.Idle;
-
+    public UnitState CurrentState => state;
     protected virtual void Awake()
     {
         if (animator == null)

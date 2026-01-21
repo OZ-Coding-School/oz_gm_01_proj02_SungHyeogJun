@@ -2,16 +2,17 @@ using System.Collections.Generic;
 using System.ComponentModel.Design;
 using UnityEngine;
 using UnityEngine.Tilemaps;
+using static TMPro.Examples.ObjectSpin;
 
 // 캐릭터(유닛)를 직접 조작하는 컨트롤러 클래스
 // 선택, 이동, 공격 범위 표시를 담당
 public class CharacterController : CharacterClass
 {
-    [SerializeField] private UnitType classUnitType;
+    public UnitType classUnitType;
     // 유닛의 병종 타입
     // CharacterManager에서 병종별 데이터(IUnitClass)를 가져오기 위한 키
 
-    private IUnitClass currentClass;
+    public IUnitClass currentClass;
     // 현재 유닛이 사용하는 병종 데이터
     // 이동 거리, 공격 범위 계산에 사용됨
 
@@ -53,6 +54,8 @@ public class CharacterController : CharacterClass
     public GameObject commandUI;
     [SerializeField] private Vector2 uiOffset = new Vector2(100f, 50f);
     [SerializeField] private Comment commentUI;
+
+    public ActionType currentAction = ActionType.None;
     protected override void Awake()
     {
         // 부모 클래스(CharacterClass)의 초기화 로직 실행
@@ -182,6 +185,44 @@ public class CharacterController : CharacterClass
         }
     }
 
+    private void CheckAttackTargetInput()
+    {
+        if (state != UnitState.Action) return;        // 액션 상태가 아니면 공격 불가
+        if (currentAction != ActionType.Attack) return; // 공격 액션이 아니면 무시
+        if (!Input.GetMouseButtonDown(0)) return;     // 좌클릭만 처리
+
+        Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        Vector3Int clickedCell = groundTilemap.WorldToCell(worldPoint);
+        clickedCell = new Vector3Int(clickedCell.x, clickedCell.y, 0);
+
+        // 1. 클릭한 타일이 공격 범위 안에 있는지 확인
+        if (!attackCells.Contains(clickedCell))
+        {
+            Debug.Log("공격 범위 밖 클릭");
+            return;
+        }
+
+        // 2. 타일에 적이 있는지 확인
+        Collider2D hit = Physics2D.OverlapPoint(worldPoint);
+        if (hit != null)
+        {
+            CharacterController target = hit.GetComponent<CharacterController>();
+            if (target != null && target.Faction == Faction.Enemy)
+            {
+                Debug.Log($"공격 대상 발견: {target.name}");
+                OnAttack(target);
+            }
+            else
+            {
+                Debug.Log("적이 아닌 유닛 클릭");
+            }
+        }
+        else
+        {
+            Debug.Log("타일에 유닛 없음");
+        }
+    }
+
     private void HideMoveTiles()
     {
         // 현재 구현은 비어 있음
@@ -192,24 +233,24 @@ public class CharacterController : CharacterClass
     {
         Vector3Int cell = groundTilemap.WorldToCell(transform.position);
 
-    if (moves == null) return;
+        if (moves == null) return;
 
-    moves.CalculateMoveRange(cell, currentClass.movementRange);
+        moves.CalculateMoveRange(cell, currentClass.movementRange);
 
-    // 기존 이동 색 제거
-    ClearMoveRangeHighlight();
+        // 기존 이동 색 제거
+        ClearMoveRangeHighlight();
 
-    // 공격 범위 계산 후 attackCells에 저장
-    HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
-    attackCells = attackRange; // ← 반드시 여기서 미리 채워야 함
+        // 공격 범위 계산 후 attackCells에 저장
+        HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
+        attackCells = attackRange; // ← 반드시 여기서 미리 채워야 함
 
-    // 공격 범위 표시 (테두리만)
-    HighlightAttackRangeOnTilemap(attackRange);
+        // 공격 범위 표시 (테두리만)
+        HighlightAttackRangeOnTilemap(attackRange);
 
-    // 이동 범위 표시 (공격 범위 위는 제외)
-    HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
+        // 이동 범위 표시 (공격 범위 위는 제외)
+        HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
 
-    ChangeState(UnitState.Selected);
+        ChangeState(UnitState.Selected);
     }
 
     public void OnMove(Vector3Int targetCell)
@@ -248,21 +289,51 @@ public class CharacterController : CharacterClass
 
     public void OnCommand()
     {
-        ChangeState(UnitState.Command);
+        ChangeState(UnitState.Command); // ← 여기서 Command로 바뀜
         Debug.Log("애니메이션 진행 끝: OnCommand() 상태!");
 
         if (commandUI != null)
             commandUI.SetActive(true);
-
+      
         UpdateCommandUIPosition();
+       
     }
 
     public void OnAction()
     {
-        // 실제 행동 실행 상태
         ChangeState(UnitState.Action);
-    }
+        Debug.Log("OnAction() 상태!");
 
+        if (commandUI != null)
+        {
+            commandUI.gameObject.SetActive(false);
+            Debug.Log("Comment UI 숨김");
+        }
+
+        switch (currentAction)
+        {
+            case ActionType.Attack:
+                // 공격 범위 표시 (붉은 필드)
+                Vector3Int cell = groundTilemap.WorldToCell(transform.position);
+                HashSet<Vector3Int> attackRange = currentClass.ShowAttackRange(cell);
+                HighlightAttackRangeOnTilemap(attackRange);
+                break;
+
+            case ActionType.Skill:
+                // 스킬 범위 표시 (필요시)
+                break;
+
+            case ActionType.Item:
+                // 아이템 대상 표시 (필요시)
+                break;
+        }
+    }
+    private void OnAttack(CharacterController target)
+    {
+        Debug.Log($"{name}이 {target.name}을 공격합니다!");
+        // 여기에 실제 공격 처리 로직 추가 (데미지 계산, 애니메이션 등)
+        ChangeState(UnitState.Done);  // 공격 후 상태 변경 예시
+    }
     public void OnEnd()
     {
         // 턴 종료 상태
@@ -437,5 +508,9 @@ public class CharacterController : CharacterClass
         screenPos.y = Mathf.Clamp(screenPos.y, uiHeight / 2, Screen.height - uiHeight / 2);
 
         commandUI.transform.position = screenPos;
+        if (commentUI != null)
+            commentUI.SetCharacter(this);
     }
+
+
 }

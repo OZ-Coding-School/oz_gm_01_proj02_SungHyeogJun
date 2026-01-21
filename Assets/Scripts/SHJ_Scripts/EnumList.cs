@@ -6,7 +6,13 @@ public enum CharacterEnum
     None,
 }
 
-
+public enum ActionType
+{
+    None,
+    Attack,
+    Skill,
+    Item
+}
 public enum UnitType
 {
     Infantry,   // º¸º´

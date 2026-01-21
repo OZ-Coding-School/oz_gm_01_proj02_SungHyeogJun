@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class Comment : MonoBehaviour
 {
@@ -14,42 +15,42 @@ public class Comment : MonoBehaviour
     public void SetCharacter(CharacterController ctrl)
     {
         character = ctrl;
-
+        Debug.Log("버튼 연결");
         if (attackButton != null)
-            attackButton.onClick.AddListener(() => AttackAction());
+            attackButton.onClick.AddListener(() => OnAttackButton());
         if (skillButton != null)
-            skillButton.onClick.AddListener(() => SkillAction());
+            skillButton.onClick.AddListener(() => OnSkillButton());
         if (itemButton != null)
-            itemButton.onClick.AddListener(() => ItemAction());
+            itemButton.onClick.AddListener(() => OnItemButton());
     }
 
-    private void AttackAction()
+    private void OnAttackButton()
     {
-        if (character != null)
+        if (character != null) // 조건 제거
         {
-            character.ChangeState(UnitState.Action);
-            Debug.Log("공격 버튼 클릭 → 상태: Action");
-            // TODO: 공격 실행 로직 추가 가능
+            character.currentAction = ActionType.Attack;
+            character.OnAction();
+            Debug.Log("Comment → Attack 버튼 클릭 → OnAction 호출");
         }
     }
 
-    private void SkillAction()
+    private void OnSkillButton()
     {
-        if (character != null)
+        if (character != null) // 조건 제거
         {
-            character.ChangeState(UnitState.Action);
-            Debug.Log("스킬 버튼 클릭 → 상태: Action");
-            // TODO: 스킬 실행 로직 추가 가능
+            character.currentAction = ActionType.Skill;
+            character.OnAction();
+            Debug.Log("Comment → Skill 버튼 클릭 → OnAction 호출");
         }
     }
 
-    private void ItemAction()
+    private void OnItemButton()
     {
-        if (character != null)
+        if (character != null) // 조건 제거
         {
-            character.ChangeState(UnitState.Action);
-            Debug.Log("아이템 버튼 클릭 → 상태: Action");
-            // TODO: 아이템 사용 로직 추가 가능
+            character.currentAction = ActionType.Item;
+            character.OnAction();
+            Debug.Log("Comment → Item 버튼 클릭 → OnAction 호출");
         }
     }
 }
