@@ -21,3 +21,9 @@ public interface IUnitClass
     HashSet<Vector3Int> ShowAttackRange(Vector3Int center);
 
 }
+
+public interface IWalkable
+{
+    bool IsWalkable { get; }
+}
+

@@ -6,8 +6,13 @@ using static TMPro.Examples.ObjectSpin;
 
 // 캐릭터(유닛)를 직접 조작하는 컨트롤러 클래스
 // 선택, 이동, 공격 범위 표시를 담당
-public class CharacterController : CharacterClass
+public class CharacterController : CharacterClass, IWalkable
 {
+    public Faction faction = Faction.Ally;
+
+    private bool _isWalkable = false;   // 내부 필드
+
+    public bool IsWalkable => _isWalkable;   // 인터페이스 구현
     public UnitType classUnitType;
     // 유닛의 병종 타입
     // CharacterManager에서 병종별 데이터(IUnitClass)를 가져오기 위한 키
@@ -385,15 +390,17 @@ public class CharacterController : CharacterClass
 
     public bool GetCellWalkable(Vector3Int cell)
     {
-        // 매니저나 지형 데이터가 없으면 이동 불가
+        // 지형 체크
         if (manager == null || manager.GetTerrainMap() == null) return false;
-
-        // 해당 셀의 지형 데이터 획득
         var terrainData = manager.GetTerrainMap().GetTerrain(cell);
-        if (terrainData == null) return false;
+        if (terrainData == null || terrainData.walkable == false) return false;
 
-        // 지형이 이동 가능하면 true 반환
-        return terrainData.walkable;
+        // 다른 유닛 체크
+        Collider2D hit = Physics2D.OverlapPoint(groundTilemap.GetCellCenterWorld(cell));
+        if (hit != null && hit.GetComponent<CharacterController>() != this)
+            return false; // 다른 유닛이 있으면 이동 불가
+
+        return true;
     }
 
     private Dictionary<Vector3Int, TileBase> originalTiles = new Dictionary<Vector3Int, TileBase>();
@@ -418,7 +425,7 @@ public class CharacterController : CharacterClass
             // 공격 범위 테두리 타일로 교체
             groundTilemap.SetTile(pos, attackOutlineTile);
 
-            // **이전 색 초기화 (투명)**
+            // **항상 흰색 유지**
             groundTilemap.SetColor(pos, Color.white);
         }
     }
