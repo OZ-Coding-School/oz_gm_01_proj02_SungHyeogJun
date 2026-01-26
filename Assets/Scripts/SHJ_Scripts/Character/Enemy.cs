@@ -1,18 +1,14 @@
-using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using UnityEngine;
 using UnityEngine.Tilemaps;
-
-
-
+using static TMPro.Examples.ObjectSpin;
 
 // 캐릭터(유닛)를 직접 조작하는 컨트롤러 클래스
 // 선택, 이동, 공격 범위 표시를 담당
-public class CharacterController : CharacterClass, IWalkable
+public class Enemy : CharacterClass, IWalkable
 {
-    
-
-    public Faction faction = Faction.Ally;
+    public Faction faction = Faction.Enemy;
 
     private bool _isWalkable = false;   // 내부 필드
 
@@ -62,7 +58,7 @@ public class CharacterController : CharacterClass, IWalkable
     public Camera mainCamera;
     public GameObject commandUI;
     [SerializeField] private Vector2 uiOffset = new Vector2(100f, 50f);
-    [SerializeField] private Comment commentUI;
+   
 
     public ActionType currentAction = ActionType.None;
     protected override void Awake()
@@ -93,145 +89,15 @@ public class CharacterController : CharacterClass, IWalkable
 
     private void Update()
     {
-        // 유닛 선택 입력 처리
-        CheckSelectInput();
-
-        // 이동 타일 클릭 입력 처리
-        CheckMoveInput();
-
-        // 우클릭 취소 입력 처리
-        CheckCancelInput();
+        EnemyAI();
     }
-    private void LateUpdate()
+
+
+    public void EnemyAI()
     {
-        if (state == UnitState.Command && commandUI != null)
-        {
-            UpdateCommandUIPosition();
-        }
-    }
-    private void CheckSelectInput()
-    {
-        // 좌클릭이 아니면 처리하지 않음
-        if (!Input.GetMouseButtonDown(0)) return;
 
-        // 마우스 화면 좌표를 월드 좌표로 변환
-        Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-
-        // 해당 위치에 콜라이더가 있는지 검사
-        RaycastHit2D hit = Physics2D.Raycast(worldPoint, Vector2.zero);
-
-        // 클릭한 오브젝트가 자기 자신이면 선택 처리
-        if (hit && hit.transform.gameObject == gameObject)
-        {
-            Debug.Log("클릭: 유닛 선택");
-            OnSelected();
-        }
     }
 
-    private void CheckMoveInput()
-    {
-        // 좌클릭이 아니면 처리하지 않음
-        if (!Input.GetMouseButtonDown(0)) return;
-
-        // 선택 상태가 아니면 이동 불가
-        if (state != UnitState.Selected) return;
-
-        // 마우스 위치를 월드 좌표로 변환
-        Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-
-        // 월드 좌표를 타일 좌표로 변환
-        Vector3Int clickedCell = groundTilemap.WorldToCell(worldPoint);
-
-        // BFS 계산 좌표와 맞추기 위해 z값을 0으로 고정
-        clickedCell = new Vector3Int(clickedCell.x, clickedCell.y, 0);
-
-        Debug.Log($"[CheckMoveInput] 클릭된 셀: {clickedCell}");
-
-        // 이동 컴포넌트가 없으면 처리 중단
-        if (moves == null)
-        {
-            Debug.LogError("[CheckMoveInput] CharacterMoves가 연결되어 있지 않음");
-            return;
-        }
-
-        // 이동 가능 범위에 없는 셀이면 무시
-        if (!moves.movableCellsBFS.Contains(clickedCell))
-        {
-            Debug.Log($"[CheckMoveInput] BFS 계산 결과에 없는 타일: {clickedCell}");
-            return;
-        }
-
-        Debug.Log($"[CheckMoveInput] 이동 처리 시작: {clickedCell}");
-        OnMove(clickedCell);
-    }
-
-    private void CheckCancelInput()
-    {
-        // 우클릭이 아니면 처리하지 않음
-        if (!Input.GetMouseButtonDown(1)) return;
-
-        switch (state)
-        {
-            case UnitState.Selected:
-                // 선택 상태에서 취소하면 이동/공격 표시 제거
-                Debug.Log("취소: 선택 해제");
-                break;
-
-            case UnitState.Move:
-                // 이동 중 취소하면 다시 선택 상태로
-                Debug.Log("취소: 이동 선택 취소");
-                OnSelected();
-                break;
-
-            case UnitState.Command:
-                // 커맨드 상태 취소 시 위치 복구
-                Debug.Log("취소: 커맨드 취소 → 이동 선택으로");
-                transform.position = prevPosition;
-                ChangeState(UnitState.Selected);
-                OnSelected();
-                break;
-        }
-    }
-
-    private void CheckAttackTargetInput()
-    {
-        if (state != UnitState.Action) return;        // 액션 상태가 아니면 공격 불가
-        if (currentAction != ActionType.Attack) return; // 공격 액션이 아니면 무시
-        if (!Input.GetMouseButtonDown(0)) return;     // 좌클릭만 처리
-
-        Vector2 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        Vector3Int clickedCell = groundTilemap.WorldToCell(worldPoint);
-        clickedCell = new Vector3Int(clickedCell.x, clickedCell.y, 0);
-
-        // 1. 클릭한 타일이 공격 범위 안에 있는지 확인
-        if (!attackCells.Contains(clickedCell))
-        {
-            Debug.Log("공격 범위 밖 클릭");
-            return;
-        }
-
-        // 2. 타일에 적이 있는지 확인
-        Collider2D hit = Physics2D.OverlapPoint(worldPoint);
-        if (hit != null)
-        {
-            CharacterController target = hit.GetComponent<CharacterController>();
-            if (target != null && target.Faction == Faction.Enemy)
-            {
-                Debug.Log($"공격 대상 발견: {target.name}");
-                OnAttack(target);
-            }
-            else
-            {
-                Debug.Log("적이 아닌 유닛 클릭");
-            }
-        }
-        else
-        {
-            Debug.Log("타일에 유닛 없음");
-        }
-    }
-
-   
 
     public void OnSelected()
     {
@@ -298,9 +164,9 @@ public class CharacterController : CharacterClass, IWalkable
 
         if (commandUI != null)
             commandUI.SetActive(true);
-      
-        UpdateCommandUIPosition();
+
        
+
     }
 
     public void OnAction()
@@ -492,31 +358,7 @@ public class CharacterController : CharacterClass, IWalkable
         HighlightMoveRangeOnTilemap(moves.movableCellsBFS);
         HighlightAttackRangeOnTilemap(attackCells);
     }
-    private void UpdateCommandUIPosition()
-    {
-        Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position);
-
-        float uiWidth = ((RectTransform)commandUI.transform).rect.width;
-        float uiHeight = ((RectTransform)commandUI.transform).rect.height;
-
-        // 기본: 오른쪽에 배치
-        screenPos.x += uiOffset.x;
-        screenPos.y += uiOffset.y;
-
-        // 화면 경계 체크
-        if (screenPos.x + uiWidth / 2 > Screen.width)
-        {
-            // 오른쪽 끝 넘어가면 왼쪽으로 붙임
-            screenPos.x = screenPos.x - uiWidth - 2 * uiOffset.x;
-        }
-
-        // 위/아래 화면 경계 처리
-        screenPos.y = Mathf.Clamp(screenPos.y, uiHeight / 2, Screen.height - uiHeight / 2);
-
-        commandUI.transform.position = screenPos;
-        if (commentUI != null)
-            commentUI.SetCharacter(this);
-    }
+   
 
 
 }

@@ -9892,6 +9892,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cfde5232d75806a458e167cc947186c1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  playerStats: []
   terrainMap: {fileID: 912274723}
 --- !u!4 &547444745
 Transform:
@@ -13756,6 +13757,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   faction: 2
   animator: {fileID: 0}
+  faction: 2
   classUnitType: 0
   manager: {fileID: 547444744}
   grid: {fileID: 1523958707}
@@ -15285,6 +15287,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   faction: 2
   animator: {fileID: 0}
+  faction: 2
   classUnitType: 0
   manager: {fileID: 547444744}
   grid: {fileID: 1523958707}

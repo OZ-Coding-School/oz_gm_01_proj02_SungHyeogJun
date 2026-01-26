@@ -75,4 +75,28 @@ public class CharacterMoves : MonoBehaviour
 
         Debug.Log($"[BFS] 총 이동 가능 셀 개수: {movableCellsBFS.Count}");
     }
+
+    public CharacterController FindLowestHPAlly(Vector3 center, float searchRadius = 3f)
+    {
+        CharacterController lowestHPUnit = null;
+        float lowestHP = float.MaxValue;
+
+        // Physics2D.OverlapCircleAll을 사용해 반경 내 모든 Collider2D 검색
+        Collider2D[] hits = Physics2D.OverlapCircleAll(center, searchRadius);
+
+        foreach (var hit in hits)
+        {
+            // CharacterController 확인
+            CharacterController unit = hit.GetComponent<CharacterController>();
+            if (unit == null) continue;
+
+            // 아군(Faction)만
+            if (unit.Faction != Faction.Ally && unit.Faction != Faction.Friendly)
+                continue;
+
+          
+        }
+
+        return lowestHPUnit; // 없으면 null 반환
+    }
 }

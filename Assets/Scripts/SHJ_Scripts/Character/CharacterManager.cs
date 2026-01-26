@@ -13,6 +13,8 @@ CharacterManager
 
 public class CharacterManager : MonoBehaviour
 {
+
+    [SerializeField] private PlayerStats[] playerStats;
     // 상태번호 → 능력치 테이블
 
     public static CharacterManager Instance;
